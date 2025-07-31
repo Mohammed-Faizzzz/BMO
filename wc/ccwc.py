@@ -113,28 +113,28 @@ def handle_cmdonly(option):
                 count += 1
             print(count)
 
-        elif option == '-w':
-            count = 0
-            for line in content_stream:
-                words_in_line = line.split()
-                count += len(words_in_line)
-            print(count)
+    elif option == '-w':
+        count = 0
+        for line in content_stream:
+            words_in_line = line.split()
+            count += len(words_in_line)
+        print(count)
 
-        elif option == '-c':
-            byte_count = 0
-            for byte_chunk in sys.stdin.buffer:
-                byte_count += len(byte_chunk)
-            print(byte_count)
+    elif option == '-c':
+        byte_count = 0
+        for byte_chunk in sys.stdin.buffer:
+            byte_count += len(byte_chunk)
+        print(byte_count)
             
-        elif option == '-m':
-            char_count = 0
-            for line in content_stream:
-                char_count += len(line)
-            print(char_count)
+    elif option == '-m':
+        char_count = 0
+        for line in content_stream:
+            char_count += len(line)
+        print(char_count)
 
-        else:
-            print(f"ccwc: invalid option -- '{option}'", file=sys.stderr)
-            sys.exit(1)
+    else:
+        print(f"ccwc: invalid option -- '{option}'", file=sys.stderr)
+        sys.exit(1)
 
 def main():
     if len(sys.argv) == 3:
