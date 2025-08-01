@@ -1,3 +1,4 @@
+import sys
 
 def parse(json_obj_path):
     json_obj = open(json_obj_path, "r")
@@ -12,18 +13,12 @@ def parse(json_obj_path):
     # Step 2: simple key value pairs
     # remove braces
     content = json_string[1:-1].strip()
-    # get the indices of the colons
     
     # possible errors:
         # trailing commas
     if content[-1] == ",":
         print("Invalid JSON: Trailing Comma")
         return
-        # missing commas --> will automatically fail when parsing strings bc you have 2 back to back
-        # newlines
-        # no quotes for keys
-        # parsing strings
-        # assume colon is not problematic here
     json_arr = content.split(",")
     for i in range(len(json_arr)):
         json_arr[i] = json_arr[i].strip()
@@ -43,27 +38,34 @@ def parse_kv_pairs(arr):
         if not (key.startswith('"') and key.endswith('"')):
             print("Invalid JSON: Key is not a string")
             return
-        if not (val.startswith('"') and val.endswith('"')):
-            print("Invalid JSON: Val is not a string")
-            return
+        
+        val = parse_value(val)
         key = key[1:-1]
-        val = val[1:-1]
         res[key] = val
     return res
         
+def parse_value(val):
+    if val == "null":
+        return None
+    elif val == "true":
+        return True
+    elif val == "false":
+        return False
+    
+    try:
+        num = float(val)
+        if num.is_integer():
+            return int(num)
+        return num
+    except ValueError:
+        pass
+    
+    if not (val.startswith('"') and val.endswith('"')):
+        print("Invalid JSON: Invalid Value format")
+        sys.exit(1)
+    return val[1:-1]
     
 
-parse('./tests/step2/valid.json')
-# {"key": "value"}
-parse('./tests/step2/valid2.json')
-# {
-#   "key": "value",
-#   "key2": "value"
-# }
-parse('./tests/step2/invalid.json')
-# {"key": "value",}
-parse('./tests/step2/invalid2.json')
-# {
-#   "key": "value",
-#   key2: "value"
-# }
+parse('./tests/step3/valid.json')
+
+parse('./tests/step3/invalid.json')
