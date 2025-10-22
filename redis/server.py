@@ -1,36 +1,43 @@
 import socket
 from resp import deserialise, serialise_simple_string, serialise_bulk_string, serialise_int, serialise_arrays, serialise_errors
 import asyncio
+import time
 
 HOST = "127.0.0.1"
 PORT = 6378
 
 dictionary = {}
+expiry = {}
 
-async def handle_client(reader, writer):
-    addr = writer.get_extra_info('peername')
-    print(f"[Async] Client connected from {addr}")
+def start_server():
+    """
+    start server on TCP socket to listen to incoming redis commands and respond accordingly
+    """
+    print(f"Starting Redis Lite on {HOST}:{PORT}")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((HOST, PORT))
+        server.listen(5)
+        print("Listening for connections...")
 
-    try:
         while True:
-            data = await reader.read(1024)  # non-blocking
-            if not data:
-                break
-            writer.write(data)              # echo back
-            await writer.drain()            # wait until sent
-    except Exception as e:
-        print(f"[Async] Error with {addr}: {e}")
-    finally:
-        writer.close()
-        await writer.wait_closed()
-        print(f"[Async] Client {addr} disconnected")
-
-async def main():
-    # HOST, PORT = "127.0.0.1", 6378
-    server = await asyncio.start_server(handle_client, HOST, PORT)
-    print(f"[Async] Listening on {HOST}:{PORT}")
-    async with server:
-        await server.serve_forever()
+            conn, addr = server.accept()
+            print(f"Client connected from {addr}")
+            with conn:
+                buffer = ""
+                while True:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    buffer += data.decode()
+                    # Try parsing one command at a time
+                    # check if buffer is a string
+                    print(isinstance(buffer, str), buffer[0])
+                    cmd = deserialise(buffer)
+                    if cmd is not None:
+                        response = handle_command(cmd)
+                        conn.sendall(response.encode())
+                        buffer = ""  # reset for next command
             
 def handle_command(cmd):
     # cmd will be like ["PING"] or ["ECHO", "Hello World"]
@@ -39,7 +46,7 @@ def handle_command(cmd):
         return serialise_simple_string("")
 
     command = cmd[0].upper()
-
+    
     if command == "PING":
         # reply with PONG
         return serialise_simple_string("PONG")
@@ -50,26 +57,44 @@ def handle_command(cmd):
         else:
             return serialise_bulk_string("")
     elif command == "SET":
-        if len(cmd) >= 3:
+        if len(cmd) == 3 or len(cmd) == 5:
             key = cmd[1]
             value = cmd[2]
             dictionary[key] = value
+            if len(cmd) == 5:
+                option = cmd[3].upper()
+                if option == "EX":
+                    seconds = int(cmd[4])
+                    expiry[key] = time.time() + seconds
+                elif option == "PX":
+                    milliseconds = int(cmd[4])
+                    expiry[key] = time.time() + (milliseconds / 1000)
+                elif option == "EXAT":
+                    unix_time = int(cmd[4])
+                    expiry[key] = unix_time
+                elif option == "PXAT":
+                    unix_time = int(cmd[4])
+                    expiry[key] = unix_time / 1000
             return serialise_simple_string("OK")
         else:
             return serialise_errors(Exception("ERR wrong number of arguments for 'SET' command"))
+            
     elif command == "GET":
-        if len(cmd) >= 2:
-            key = cmd[1]
-            value = dictionary.get(key, None)
-            return serialise_bulk_string(value)
-        else:
+        if len(cmd) < 2:
             return serialise_errors(Exception("ERR wrong number of arguments for 'GET' command"))
-    elif command == "CHECK":
-        pairs = [[k, v] for k, v in dictionary.items()]
-        print(pairs)
-        return serialise_arrays([serialise_arrays(pair) for pair in pairs])
+
+        key = cmd[1]
+
+        # Check expiry
+        if key in expiry and time.time() > expiry[key]:
+            del expiry[key]
+            if key in dictionary:
+                del dictionary[key]
+            return serialise_bulk_string(None)
+
+        value = dictionary.get(key)
+        return serialise_bulk_string(value)
     else:
-        return serialise_errors(Exception(f"ERR unknown command '{command}'"))
-    
-if __name__ == "__main__":
-    asyncio.run(main())
+        return serialise_errors(Exception("ERR unknown command"))
+
+start_server()
