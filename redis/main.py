@@ -41,4 +41,23 @@ def serialise_arrays(arr: list) -> str:
         else:
             raise TypeError("Unsupported type in array serialization")
     return res
-    
+
+def deserialise(data: str):
+    if not data:
+        raise ValueError("No data to deserialise")
+    elif data.startswith("+"): # Simple String
+        return data[1:-2]
+    elif data.startswith("-"):
+        return Exception(data[1:-2])
+    elif data.startswith(":"):
+        return int(data[1:-2])
+    elif data.startswith("$"):
+        length = int(data[1:data.index("\r\n", 1)])
+        if length == -1:
+            return None
+        return data[data.index("\r\n", 1) + 2:data.index("\r\n", data.index("\r\n", 1) + 2)]
+    elif data.startswith("*"):
+        items = data[1:-2].split("\r\n")
+        return [deserialise(item) for item in items if item]
+    else:
+        raise ValueError("Unknown RESP type")    
