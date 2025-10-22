@@ -1,16 +1,39 @@
 import socket
 from resp import deserialise, serialise_simple_string, serialise_bulk_string, serialise_int, serialise_arrays, serialise_errors
+import threading
 
 HOST = "127.0.0.1"
 PORT = 6378
 
 dictionary = {}
 
+def handle_client(conn, addr):
+    print(f"Client connected from {addr}")
+    buffer = ""
+    try:
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                break
+            buffer += data.decode()
+
+            cmd = deserialise(buffer)
+            if cmd:
+                response = handle_command(cmd)
+                conn.sendall(response.encode())
+                buffer = ""
+    except Exception as e:
+        print(f"Error with client {addr}: {e}")
+    finally:
+        conn.close()
+        print(f"Client {addr} disconnected")
+
+
 def start_server():
-    """
-    start server on TCP socket to listen to incoming redis commands and respond accordingly
-    """
+    HOST = "127.0.0.1"
+    PORT = 6378
     print(f"Starting Redis Lite on {HOST}:{PORT}")
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((HOST, PORT))
@@ -19,23 +42,9 @@ def start_server():
 
         while True:
             conn, addr = server.accept()
-            print(f"Client connected from {addr}")
-            with conn:
-                buffer = ""
-                while True:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-                    buffer += data.decode()
-                    # Try parsing one command at a time
-                    # check if buffer is a string
-                    print(isinstance(buffer, str), buffer[0])
-                    cmd = deserialise(buffer)
-                    if cmd is not None:
-                        response = handle_command(cmd)
-                        conn.sendall(response.encode())
-                        buffer = ""  # reset for next command
-
+            t = threading.Thread(target=handle_client, args=(conn, addr))
+            t.start()
+            
 def handle_command(cmd):
     # cmd will be like ["PING"] or ["ECHO", "Hello World"]
     global dictionary
@@ -69,9 +78,11 @@ def handle_command(cmd):
         else:
             return serialise_errors(Exception("ERR wrong number of arguments for 'GET' command"))
     elif command == "CHECK":
-        return serialise_arrays(list(dictionary.keys()) + list(dictionary.values()))
+        pairs = [[k, v] for k, v in dictionary.items()]
+        print(pairs)
+        return serialise_arrays([serialise_arrays(pair) for pair in pairs])
     else:
-        return serialise_bulk_string(f"Unknown command {command}")
+        return serialise_errors(Exception(f"ERR unknown command '{command}'"))
     
 
 start_server()
