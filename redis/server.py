@@ -1,49 +1,36 @@
 import socket
 from resp import deserialise, serialise_simple_string, serialise_bulk_string, serialise_int, serialise_arrays, serialise_errors
-import threading
+import asyncio
 
 HOST = "127.0.0.1"
 PORT = 6378
 
 dictionary = {}
 
-def handle_client(conn, addr):
-    print(f"Client connected from {addr}")
-    buffer = ""
+async def handle_client(reader, writer):
+    addr = writer.get_extra_info('peername')
+    print(f"[Async] Client connected from {addr}")
+
     try:
         while True:
-            data = conn.recv(1024)
+            data = await reader.read(1024)  # non-blocking
             if not data:
                 break
-            buffer += data.decode()
-
-            cmd = deserialise(buffer)
-            if cmd:
-                response = handle_command(cmd)
-                conn.sendall(response.encode())
-                buffer = ""
+            writer.write(data)              # echo back
+            await writer.drain()            # wait until sent
     except Exception as e:
-        print(f"Error with client {addr}: {e}")
+        print(f"[Async] Error with {addr}: {e}")
     finally:
-        conn.close()
-        print(f"Client {addr} disconnected")
+        writer.close()
+        await writer.wait_closed()
+        print(f"[Async] Client {addr} disconnected")
 
-
-def start_server():
-    HOST = "127.0.0.1"
-    PORT = 6378
-    print(f"Starting Redis Lite on {HOST}:{PORT}")
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((HOST, PORT))
-        server.listen(5)
-        print("Listening for connections...")
-
-        while True:
-            conn, addr = server.accept()
-            t = threading.Thread(target=handle_client, args=(conn, addr))
-            t.start()
+async def main():
+    # HOST, PORT = "127.0.0.1", 6378
+    server = await asyncio.start_server(handle_client, HOST, PORT)
+    print(f"[Async] Listening on {HOST}:{PORT}")
+    async with server:
+        await server.serve_forever()
             
 def handle_command(cmd):
     # cmd will be like ["PING"] or ["ECHO", "Hello World"]
@@ -84,5 +71,5 @@ def handle_command(cmd):
     else:
         return serialise_errors(Exception(f"ERR unknown command '{command}'"))
     
-
-start_server()
+if __name__ == "__main__":
+    asyncio.run(main())
