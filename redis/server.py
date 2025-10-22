@@ -4,6 +4,8 @@ from resp import deserialise, serialise_simple_string, serialise_bulk_string, se
 HOST = "127.0.0.1"
 PORT = 6378
 
+dictionary = {}
+
 def start_server():
     """
     start server on TCP socket to listen to incoming redis commands and respond accordingly
@@ -36,6 +38,7 @@ def start_server():
 
 def handle_command(cmd):
     # cmd will be like ["PING"] or ["ECHO", "Hello World"]
+    global dictionary
     if not cmd:
         return serialise_simple_string("")
 
@@ -50,7 +53,23 @@ def handle_command(cmd):
             return serialise_bulk_string(cmd[1])
         else:
             return serialise_bulk_string("")
-
+    elif command == "SET":
+        if len(cmd) >= 3:
+            key = cmd[1]
+            value = cmd[2]
+            dictionary[key] = value
+            return serialise_simple_string("OK")
+        else:
+            return serialise_errors(Exception("ERR wrong number of arguments for 'SET' command"))
+    elif command == "GET":
+        if len(cmd) >= 2:
+            key = cmd[1]
+            value = dictionary.get(key, None)
+            return serialise_bulk_string(value)
+        else:
+            return serialise_errors(Exception("ERR wrong number of arguments for 'GET' command"))
+    elif command == "CHECK":
+        return serialise_arrays(list(dictionary.keys()) + list(dictionary.values()))
     else:
         return serialise_bulk_string(f"Unknown command {command}")
     
